@@ -178,3 +178,75 @@ def GlowEdgeShader(**kw):
     base  = np.array((0.05, 0.05, 0.05))         # cuerpo casi negro
     color = np.clip(base + glow, 0, 1)
     return tuple((color*255).astype(int))
+
+
+def NormalMappedPhongShader(**kw):
+    """
+    Phong con normal mapping (o bump si se pasa height map).
+    Usa:
+        - texture: albedo (opcional)
+        - normalTex: normal map en espacio tangente (RGB en [0,1])
+        - heightTex: height map (grises) si no hay normalTex → bump
+    Parámetros opcionales:
+        ambient=0.15, kd=1.0, ks=0.35, shininess=64, bumpScale=1.0
+    """
+    A, B, C = kw["verts"]
+    u_b, v_b, w_b = kw["baryCoords"]
+    u, v = kw.get("u", 0), kw.get("v", 0)
+    L = np.array(kw["dirLight"], dtype=float)
+
+    # Normal geométrica interpolada
+    NA, NB, NC = np.array(A[3:6]), np.array(B[3:6]), np.array(C[3:6])
+    N = u_b*NA + v_b*NB + w_b*NC
+    N = N / (np.linalg.norm(N) + 1e-8)
+
+    # Base de color (albedo)
+    if (T := kw.get("texture")) is not None:
+        r, g, b = T.getColor(u, v)
+        albedo = np.array((r, g, b))
+    else:
+        albedo = np.array((1.0, 1.0, 1.0))
+
+    # --- Tangent space (simple, sin tangentes de malla) ---
+    # Construimos T y B ortogonales a N con un "up" estable
+    up = np.array((0.0, 1.0, 0.0)) if abs(N[1]) < 0.9 else np.array((1.0, 0.0, 0.0))
+    T = np.cross(up, N);  T /= np.linalg.norm(T) + 1e-8
+    B = np.cross(N, T)
+
+    # --- Normal map o Bump map ---
+    normalTex = kw.get("normalTex", None)
+    heightTex = kw.get("heightTex", None)
+    if normalTex is not None:
+        rn, gn, bn = normalTex.getColor(u, v)          # [0,1]
+        n_t = np.array((rn*2-1, gn*2-1, bn*2-1))       # [-1,1]
+    elif heightTex is not None:
+        # Bump: gradiente numérico en UV
+        eps = 1.0 / 1024.0
+        def grayAt(uu, vv):
+            rr, gg, bb = heightTex.getColor(uu, vv)
+            return 0.299*rr + 0.587*gg + 0.114*bb
+        h  = grayAt(u, v)
+        hx = grayAt(u+eps, v) - h
+        hy = grayAt(u, v+eps) - h
+        scale = kw.get("bumpScale", 1.0)
+        n_t = np.array((-scale*hx, -scale*hy, 1.0))
+        n_t /= np.linalg.norm(n_t) + 1e-8
+    else:
+        n_t = np.array((0.0, 0.0, 1.0))                # sin mapa → normal original
+
+    # Tangent → espacio "mundo/vista"
+    N = T*n_t[0] + B*n_t[1] + N*n_t[2]
+    N /= np.linalg.norm(N) + 1e-8
+
+    # Iluminación Phong (Blinn)
+    diff = max(0.0, N.dot(-L))
+    V = np.array((0, 0, 1), dtype=float)
+    H = (-L + V); H /= np.linalg.norm(H) + 1e-8
+    spec = max(0.0, N.dot(H)) ** kw.get("shininess", 64)
+
+    ambient = kw.get("ambient", 0.15)
+    kd = kw.get("kd", 1.0)
+    ks = kw.get("ks", 0.35)
+    color = albedo * (ambient + kd*diff) + ks*spec
+    color = np.clip(color, 0, 1)
+    return tuple((color*255).astype(int))
