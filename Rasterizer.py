@@ -165,7 +165,7 @@ SCENE = [
    # Serpiente
     (
         os.path.join(BASE_DIR, "mayor", "Model.obj"),
-        (22, 22, 22), (-10, -3, -6.8), (0, 90, 0),
+        (18, 18, 18), (-10, 3, -6.8), (30, 90, 10),
         (VertexShader, HalftoneToonShader),
         {"frag": {"levels": 4, "ambient": 0.18, "dotSize": 4}}
     ),
@@ -173,7 +173,7 @@ SCENE = [
     # Solcandens
     (
         os.path.join(BASE_DIR, "mayor", "Solcadens.obj"),
-        (7, 7, 7), (10.6, -0.50, -7.5), (0, -90, 0),
+        (4, 4, 4), (8.6, -3.50, -7.5), (0, -60, 0),
         (WaveVertexShader, GlowEdgeShader),
         {"frag": {"intensity": 1.15},
          "vert": {"amplitude": 0.12, "wavelength": 2.8, "speed": 0.7}}
