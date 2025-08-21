@@ -250,3 +250,55 @@ def NormalMappedPhongShader(**kw):
     color = albedo * (ambient + kd*diff) + ks*spec
     color = np.clip(color, 0, 1)
     return tuple((color*255).astype(int))
+
+def NeonFresnelShader(**kw):
+    """
+    Toon + borde neón:
+      - Interior: difusa cuantizada (toon).
+      - Borde: rim/fresnel con color neón y contorno por baricéntricas.
+    Params:
+      levels=5, ambient=0.12,
+      neonColor=(0.2,0.9,1.0), neonIntensity=1.5,
+      pulseSpeed=4.0, fresnelPow=3.0,
+      outlineIntensity=1.0, edgeWidth=0.08
+    """
+    A, B, C = kw["verts"]
+    u_b, v_b, w_b = kw["baryCoords"]
+    L = np.array(kw["dirLight"], dtype=float)
+    time = kw.get("time", 0.0)
+
+    # Normal interpolada
+    NA, NB, NC = np.array(A[3:6]), np.array(B[3:6]), np.array(C[3:6])
+    N = u_b*NA + v_b*NB + w_b*NC
+    N /= np.linalg.norm(N) + 1e-8
+
+    # Luz difusa → cuantizada (toon)
+    diff = max(0.0, N.dot(-L))
+    levels = kw.get("levels", 5)
+    diff_q = np.floor(diff * levels) / max(1, (levels - 1))
+
+    # Color base: textura si existe, si no baseColor
+    if (T := kw.get("texture")) is not None:
+        r, g, b = T.getColor(kw.get("u"), kw.get("v"))
+        base = np.array((r, g, b))
+    else:
+        base = np.array(kw.get("baseColor", (1.0, 1.0, 1.0)))
+
+    ambient = kw.get("ambient", 0.12)
+    body = base * (ambient + diff_q * (1 - ambient))
+
+    # Fresnel / rim
+    V = np.array((0, 0, 1), dtype=float)
+    fres = (1.0 - max(0.0, N.dot(V))) ** kw.get("fresnelPow", 3.0)
+    neonColor = np.array(kw.get("neonColor", (0.2, 0.9, 1.0)))
+    pulse = 0.6 + 0.4 * np.sin(time * kw.get("pulseSpeed", 4.0))
+    rim = neonColor * fres * kw.get("neonIntensity", 1.5) * pulse
+
+    # Contorno por baricéntricas (bordes del triángulo)
+    edgeWidth = kw.get("edgeWidth", 0.08)
+    edge = np.clip(np.minimum.reduce([u_b, v_b, w_b]) / edgeWidth, 0.0, 1.0)
+    outlineMask = 1.0 - edge
+    outline = neonColor * outlineMask * kw.get("outlineIntensity", 1.0)
+
+    color = np.clip(body + rim + outline, 0, 1)
+    return tuple((color * 255).astype(int))

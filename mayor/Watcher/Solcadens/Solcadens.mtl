@@ -1,0 +1,38 @@
+# Blender MTL File: 'None'
+# Material Count: 3
+
+newmtl unit_2136_b_high
+Ns 199.999995
+Ka 1.000000 1.000000 1.000000
+Kd 0.705882 0.705882 0.705882
+Ks 0.000000 0.000000 0.000000
+Ke 0.000000 0.000000 0.000000
+Ni 1.450000
+d 1.000000
+illum 1
+map_Kd unit_2136_b_high_d.png
+map_d unit_2136_b_high_d.png
+
+newmtl unit_2136_e_high
+Ns 199.999995
+Ka 1.000000 1.000000 1.000000
+Kd 0.588235 0.588235 0.588235
+Ks 0.000000 0.000000 0.000000
+Ke 0.000000 0.000000 0.000000
+Ni 1.450000
+d 1.000000
+illum 1
+map_Kd unit_2136_e_high_d.png
+map_d unit_2136_e_high_d.png
+
+newmtl unit_2136_w_high
+Ns 199.999995
+Ka 1.000000 1.000000 1.000000
+Kd 0.705882 0.705882 0.705882
+Ks 0.000000 0.000000 0.000000
+Ke 0.000000 0.000000 0.000000
+Ni 1.450000
+d 1.000000
+illum 1
+map_Kd unit_2136_w_high_d.png
+map_d unit_2136_w_high_d.png
