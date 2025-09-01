@@ -1,51 +1,56 @@
 import numpy as np
+from MathLib import normalize, clamp01, reflectVector
 
-_EPS = 1e-8
-
-class Light:
-    def __init__(self, color=(1, 1, 1), intensity=1.0, kind="generic"):
+class Light(object):
+    def __init__(self, color=(1, 1, 1), intensity=1.0, lightType="None"):
         self.color = np.array(color, dtype=float)
         self.intensity = float(intensity)
-        self.kind = kind
+        self.lightType = lightType
 
-    def get_light_color(self) -> np.ndarray:
-        """Color * intensidad (en [0..1])."""
-        return self.color * self.intensity
+    def GetLightColor(self, intercept=None):
+        # luz base, sin atenuar
+        return (self.color * self.intensity).tolist()
 
-    # Interfaz unificada para el motor:
-    #  - devuelve (ldir, dist, Lcol)
-    #  - ldir: dirección NORMALIZADA desde el punto hacia la luz
-    #  - dist: distancia hasta la luz; np.inf para direccional
-    #  - Lcol: color de la luz (ya con intensidad/atenuación aplicadas)
-    def sample(self, point: np.ndarray):
-        raise NotImplementedError
+    # por defecto sin especular
+    def GetSpecularColor(self, intercept, viewPos, shininess=32, ks=0.5):
+        return [0.0, 0.0, 0.0]
+
+
+class AmbientLight(Light):
+    def __init__(self, color=(1, 1, 1), intensity=0.12):
+        super().__init__(color, intensity, "Ambient")
+
+    # ambiente no depende de la normal
+    def GetLightColor(self, intercept=None):
+        return super().GetLightColor()
 
 
 class DirectionalLight(Light):
-    def __init__(self, direction=(0, -1, 0), color=(1, 1, 1), intensity=1.0):
-        super().__init__(color=color, intensity=intensity, kind="dir")
-        d = np.array(direction, dtype=float)
-        n = np.linalg.norm(d)
-        self.dir = d / (n if n > _EPS else 1.0)  # dirección *desde la luz hacia la escena*
+    def __init__(self, color=(1, 1, 1), intensity=1.0, direction=(0, -1, 0)):
+        super().__init__(color, intensity, "Directional")
+        self.direction = normalize(direction)  # hacia dónde APUNTA la luz
 
-    def sample(self, point):
-        ldir = -self.dir               # hacia la luz
-        dist = np.inf                  # luz “en el infinito”
-        Lcol = self.get_light_color()  # sin atenuación por distancia
-        return ldir, dist, Lcol
+    def GetLightColor(self, intercept=None):
+        base = super().GetLightColor()
+        if intercept is None:
+            return base
 
+        # Vector de luz incidente en la superficie (del punto hacia la luz)
+        L = -self.direction
+        N = normalize(intercept.normal)
+        ndotl = clamp01(np.dot(N, L))
+        return (np.array(base) * ndotl).tolist()
 
-class PointLight(Light):
-    def __init__(self, position, color=(1, 1, 1), intensity=1.0, att_a=0.04, att_b=0.01):
-        super().__init__(color=color, intensity=intensity, kind="point")
-        self.pos  = np.array(position, dtype=float)
-        self.att_a = float(att_a)     # 1 / (1 + a*r + b*r^2)
-        self.att_b = float(att_b)
+    def GetSpecularColor(self, intercept, viewPos, shininess=64, ks=0.35):
+        # V: del punto hacia la cámara
+        P = np.array(intercept.point, dtype=float)
+        V = normalize(np.array(viewPos, dtype=float) - P)
 
-    def sample(self, point):
-        toL  = self.pos - point
-        dist = float(np.linalg.norm(toL))
-        ldir = toL / (dist if dist > _EPS else 1.0)
-        att  = 1.0 / (1.0 + self.att_a * dist + self.att_b * dist * dist)
-        Lcol = self.get_light_color() * att
-        return ldir, dist, Lcol
+        # L: del punto hacia la luz
+        L = -self.direction
+
+        # R: reflexión de L alrededor de N
+        R = reflectVector(intercept.normal, L)
+
+        spec = clamp01(np.dot(V, R)) ** shininess
+        return (self.color * self.intensity * ks * spec).tolist()
