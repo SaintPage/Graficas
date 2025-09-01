@@ -1,187 +1,115 @@
-# gl.py
-import math, struct
 import numpy as np
 
-# ---------------- utils ----------------
-def normalize(v: np.ndarray) -> np.ndarray:
-    n = np.linalg.norm(v)
-    return v / n if n > 1e-8 else v
+class Renderer:
+    def __init__(self, width, height, fov=60, bg_color=(0, 0, 0)):
+        self.width  = int(width)
+        self.height = int(height)
+        self.aspect = self.width / self.height
+        self.fov    = np.deg2rad(fov)               # en radianes
+        self.tanFov = np.tan(self.fov * 0.5)
+        # framebuffer en 0..255 (uint8)
+        self.framebuffer = np.zeros((self.height, self.width, 3), dtype=np.uint8)
 
-def clamp01(x: float) -> float:
-    return 0.0 if x < 0.0 else (1.0 if x > 1.0 else x)
+        # cámara en el origen mirando -Z
+        self.camPos    = np.array((0.0, 0.0, 0.0), dtype=float)
+        self.camTarget = np.array((0.0, 0.0, -1.0), dtype=float)
+        self.camUp     = np.array((0.0, 1.0,  0.0), dtype=float)
 
-# ---------------- BMP writer (24-bit, sin compresión) ----------------
-def savebmp(filename: str, width: int, height: int, framebuffer_u8: np.ndarray):
-    """
-    framebuffer_u8: np.uint8 [H, W, 3] en RGB (origen arriba-izquierda).
-    """
-    pad = (4 - (width * 3) % 4) % 4
-    image_size = (3 * width + pad) * height
-    file_size = 14 + 40 + image_size
+        # escena
+        self.objects = []   # esferas u otras figuras
+        self.lights  = []   # luces
 
-    with open(filename, "wb") as f:
-        # File header
-        f.write(b"BM")
-        f.write(struct.pack("<I", file_size))
-        f.write(b"\x00\x00\x00\x00")         # reserved
-        f.write(struct.pack("<I", 14 + 40))  # offset to pixel data
+        # color de fondo en 0..1
+        self.bg_color = np.array(bg_color, dtype=float)
 
-        # DIB header (BITMAPINFOHEADER)
-        f.write(struct.pack("<I", 40))       # header size
-        f.write(struct.pack("<i", width))
-        f.write(struct.pack("<i", height))   # positivo = bottom-up
-        f.write(struct.pack("<H", 1))        # planes
-        f.write(struct.pack("<H", 24))       # bpp
-        f.write(struct.pack("<I", 0))        # BI_RGB
-        f.write(struct.pack("<I", image_size))
-        f.write(struct.pack("<I", 0))        # x ppm
-        f.write(struct.pack("<I", 0))        # y ppm
-        f.write(struct.pack("<I", 0))        # colors
-        f.write(struct.pack("<I", 0))        # important colors
+    @staticmethod
+    def _to_u8(color01):
+        return (np.clip(color01, 0.0, 1.0) * 255).astype(np.uint8)
 
-        # Pixel data (bottom-up), BGR + padding por fila
-        for y in range(height - 1, -1, -1):
-            row_rgb = framebuffer_u8[y]                 # [W,3]
-            row_bgr = row_rgb[:, ::-1].tobytes()        # RGB -> BGR
-            f.write(row_bgr)
-            if pad:
-                f.write(b"\x00" * pad)
+    # ---------------- API de escena ----------------
+    def add(self, obj): self.objects.append(obj)
+    def add_light(self, light): self.lights.append(light)
 
-# ---------------- Raytracer ----------------
-class Raytracer:
-    def __init__(self, width=800, height=450):
-        self.width  = width
-        self.height = height
-        self.fb = np.zeros((height, width, 3), dtype=np.float32)
-
-        # cámara (se calcula con set_camera)
-        self.eye = np.array((0.0, 0.0, 0.0), dtype=float)
-        self.forward = np.array((0.0, 0.0, -1.0), dtype=float)
-        self.right   = np.array((1.0, 0.0,  0.0), dtype=float)
-        self.up      = np.array((0.0, 1.0,  0.0), dtype=float)
-        self.half_w = 1.0
-        self.half_h = 1.0
-
-        self.scene  = []   # lista de Sphere (figures.Sphere)
-        self.lights = []   # lista de luces (PointLight / DirectionalLight)
-        self.clear_color = np.array((0.7, 0.8, 1.0), dtype=float)
-
-    # ---------- cámara ----------
-    def set_camera(self, eye, target, up=(0,1,0), fov_deg=60.0):
-        eye    = np.array(eye,    dtype=float)
-        target = np.array(target, dtype=float)
-        up     = np.array(up,     dtype=float)
-
-        forward = normalize(target - eye)
-        right   = normalize(np.cross(forward, up))
-        new_up  = normalize(np.cross(right, forward))
-
-        aspect = self.width / float(self.height)
-        fov = math.radians(fov_deg)
-        half_h = math.tan(fov * 0.5)
-        half_w = half_h * aspect
-
-        self.eye = eye
-        self.forward = forward
-        self.right = right
-        self.up = new_up
-        self.half_w = half_w
-        self.half_h = half_h
-
-    def set_scene(self, figures):
-        self.scene = figures
-
-    def set_lights(self, lights):
-        self.lights = lights
-
-    # ---------- intersección rayo-esfera ----------
-    def _ray_sphere_intersect(self, ro, rd, sphere):
-        oc = ro - sphere.center
-        b = 2.0 * np.dot(rd, oc)
-        c = np.dot(oc, oc) - sphere.radius * sphere.radius
-        disc = b*b - 4.0*c
-        if disc < 0.0:
-            return None
-        sdisc = math.sqrt(disc)
-        t0 = (-b - sdisc) * 0.5
-        t1 = (-b + sdisc) * 0.5
-        t  = t0 if t0 > 1e-4 else (t1 if t1 > 1e-4 else None)
-        if t is None:
-            return None
-        hit = ro + t * rd
-        nrm = (hit - sphere.center)
-        nrm = nrm / (np.linalg.norm(nrm) + 1e-8)
-        return t, hit, nrm
-
-    def _shade(self, hit, nrm, view_dir, material, spheres):
-        def clamp01(x: float) -> float:
-            return 0.0 if x < 0.0 else (1.0 if x > 1.0 else x)
-
-        col = np.array(material.color, dtype=float) * material.ka
-
-        for L in self.lights:
-            ldir, Ldist, Lcol = L.sample(hit)
-
-            # ---- sombras (rayito hacia la luz) ----
-            shadow = False
-            ro = hit + nrm * 1e-3
-            rd = ldir
-            max_t = (Ldist - 1e-3) if np.isfinite(Ldist) else None
-            for s in spheres:
-                isec = self._ray_sphere_intersect(ro, rd, s)
-                if isec is None:
-                    continue
-                if max_t is None or isec[0] < max_t:
-                    shadow = True
-                    break
-            if shadow:
-                continue
-
-            # ---- Phong (Blinn) ----
-            ndl  = clamp01(float(np.dot(nrm, ldir)))
-            diff = material.kd * ndl
-            h = ldir + view_dir
-            h = h / (np.linalg.norm(h) + 1e-8)
-            spec = material.ks * (clamp01(float(np.dot(nrm, h))) ** material.shininess)
-
-            col += np.array(material.color) * diff * Lcol
-            col += spec * Lcol
-
-        return np.clip(col, 0.0, 1.0)
-
-    # ---------- render ----------
+    # ---------------- Núcleo del raytracer ----------------
     def render(self):
-        H, W = self.height, self.width
-        eye, fwd, right, up = self.eye, self.forward, self.right, self.up
-        half_w, half_h = self.half_w, self.half_h
-        bg = self.clear_color
+        """Traza un rayo por pixel desde camPos hacia el plano de imagen."""
+        for j in range(self.height):
+            y = (1 - 2 * ((j + 0.5) / self.height)) * self.tanFov
+            for i in range(self.width):
+                x = (2 * ((i + 0.5) / self.width) - 1) * self.tanFov * self.aspect
+                dir_cam = np.array((x, y, -1.0), dtype=float)
+                dir_cam /= (np.linalg.norm(dir_cam) + 1e-8)
 
-        for j in range(H):
-            v = (1 - 2 * ((j + 0.5) / H)) * half_h
-            for i in range(W):
-                u = (2 * ((i + 0.5) / W) - 1) * half_w
-                rd = normalize(fwd + u * right + v * up)
-                ro = eye
+                color = self.cast_ray(self.camPos, dir_cam)
+                self.framebuffer[j, i] = self._to_u8(color)
 
-                nearest_t = 1e9
-                rec = None
-                for s in self.scene:
-                    hit = self._ray_sphere_intersect(ro, rd, s)
-                    if hit is not None and hit[0] < nearest_t:
-                        nearest_t = hit[0]
-                        rec = (s, hit[1], hit[2])  # sphere, point, normal
+    def cast_ray(self, origin, direction):
+        """Devuelve color [0..1] para un rayo origen+tdir."""
+        O = np.array(origin, dtype=float)
+        D = np.array(direction, dtype=float);  D /= (np.linalg.norm(D) + 1e-8)
 
-                if rec is None:
-                    # cielo simple
-                    t = 0.5 * (rd[1] + 1.0)
-                    self.fb[j, i] = (1.0 - t) * np.array((1, 1, 1)) + t * np.array((0.6, 0.8, 1.0))
-                else:
-                    s, hit, nrm = rec
-                    view_dir = normalize(-rd)
-                    self.fb[j, i] = self._shade(hit, nrm, view_dir, s.material, self.scene)
+        hit = self.scene_intersect(O, D)
+        if hit is None:
+            return self.bg_color
+        return hit.obj.material.GetSurfaceColor(hit, self)
 
-    # ---------- guardar ----------
-    def save(self, filename="output.bmp"):
-        # gamma 2.2
-        img = (np.clip(self.fb, 0, 1) ** (1/2.2) * 255).astype(np.uint8)
-        savebmp(filename, self.width, self.height, img)
+    def scene_intersect(self, origin, direction, ignore_obj=None):
+        """Encuentra el primer objeto intersectado por el rayo."""
+        O = np.array(origin, dtype=float)
+        D = np.array(direction, dtype=float);  D /= (np.linalg.norm(D) + 1e-8)
+
+        nearest_hit, nearest_t = None, float("inf")
+        for obj in self.objects:
+            if obj is ignore_obj:
+                continue
+            h = obj.ray_intersect(O, D)
+            if h and 1e-4 < h.distance < nearest_t:
+                nearest_hit, nearest_t = h, h.distance
+        return nearest_hit
+
+    # alias usado por material.py para sombras
+    def glCastRay(self, origin, direction, ignore_obj=None):
+        return self.scene_intersect(origin, direction, ignore_obj)
+
+    # ---------------- Guardado a BMP ----------------
+    def saveBMP(self, filename: str):
+        """
+        Guarda el framebuffer (H,W,3) uint8 como BMP 24-bit.
+        """
+        h, w, _ = self.framebuffer.shape
+        row_stride = w * 3
+        # Cada fila del BMP debe estar alineada a múltiplos de 4 bytes
+        row_padded = (row_stride + 3) & ~3
+        padding = row_padded - row_stride
+
+        filesize = 14 + 40 + row_padded * h  # FileHeader (14) + InfoHeader (40) + data
+
+        with open(filename, "wb") as f:
+            # --- BITMAPFILEHEADER (14 bytes) ---
+            f.write(b"BM")                               # bfType
+            f.write(filesize.to_bytes(4, "little"))      # bfSize
+            f.write((0).to_bytes(2, "little"))           # bfReserved1
+            f.write((0).to_bytes(2, "little"))           # bfReserved2
+            f.write((14 + 40).to_bytes(4, "little"))     # bfOffBits
+
+            # --- BITMAPINFOHEADER (40 bytes) ---
+            f.write((40).to_bytes(4, "little"))          # biSize
+            f.write(w.to_bytes(4, "little", signed=True))# biWidth
+            f.write(h.to_bytes(4, "little", signed=True))# biHeight (positivo = bottom-up)
+            f.write((1).to_bytes(2, "little"))           # biPlanes
+            f.write((24).to_bytes(2, "little"))          # biBitCount
+            f.write((0).to_bytes(4, "little"))           # biCompression (BI_RGB)
+            f.write((row_padded*h).to_bytes(4, "little"))# biSizeImage
+            f.write((2835).to_bytes(4, "little"))        # biXPelsPerMeter (~72 DPI)
+            f.write((2835).to_bytes(4, "little"))        # biYPelsPerMeter
+            f.write((0).to_bytes(4, "little"))           # biClrUsed
+            f.write((0).to_bytes(4, "little"))           # biClrImportant
+
+            # --- Pixel data (BGR, filas de abajo hacia arriba) ---
+            pad_bytes = b"\x00" * padding
+            for y in range(h-1, -1, -1):                 # bottom-up
+                row = self.framebuffer[y]                # (W,3) en RGB
+                bgr = row[:, [2, 1, 0]]                  # convertir a BGR
+                f.write(bgr.tobytes())
+                if padding:
+                    f.write(pad_bytes)
