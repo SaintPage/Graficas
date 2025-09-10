@@ -39,4 +39,4 @@ rt.add(Sphere(center=(-3,  0.8, -5), radius=0.9, material=water))   # transparen
 
 rt.render()
 rt.saveBMP("output.bmp")
-print("✓ render listo: output.bmp")
+

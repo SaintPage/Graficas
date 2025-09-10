@@ -25,9 +25,9 @@ class Material(object):
         self.ior         = float(ior)
         self.reflectivity = float(reflectivity)
 
-    # ------------------------------------------------------------
+    
     # Phong + Sombras + (Reflexión / Refracción / Fresnel)
-    # ------------------------------------------------------------
+
     def GetSurfaceColor(self, intercept, renderer, recursion=0):
         N = intercept.normal / (np.linalg.norm(intercept.normal) + 1e-8)
         V = (-intercept.rayDirection)

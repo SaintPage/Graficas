@@ -13,7 +13,6 @@ class Renderer:
         self.max_depth = 3
         self.env_mode = "latlong" 
 
-        # framebuffer RGB en 0..255
         self.framebuffer = np.zeros((self.height, self.width, 3), dtype=np.uint8)
 
         # cámara sencilla en el origen mirando -Z
@@ -22,16 +21,14 @@ class Renderer:
         # color de fondo (si no hay envmap)
         self.bg_color = np.array(bg_color, dtype=float)
 
-        # --- environment map ---
+
         self.env = None            # ndarray float (H,W,3) en 0..1
         self.env_yaw = 0.0         # grados de giro horizontal
         self.env_vflip = False     # invertir V si viene “al revés”
 
-        # --- contenedores de escena ---
         self.objects = []          # esferas u otras figuras
         self.lights  = []          # luces
 
-    # ---------------- util ----------------
     @staticmethod
     def _to_u8(color01):
         return (np.clip(color01, 0.0, 1.0) * 255).astype(np.uint8)
@@ -112,7 +109,6 @@ class Renderer:
         col = self._sample_env_bilinear(u, v)
         return tuple(col)
 
-    # ---------------- núcleo del raytracer ----------------
     def render(self):
         """Traza un rayo por pixel desde camPos hacia el plano de imagen."""
         for j in range(self.height):
@@ -156,7 +152,6 @@ class Renderer:
     def glCastRay(self, origin, direction, ignore_obj=None, recursion=0):
         return self.scene_intersect(origin, direction, ignore_obj)
 
-    # ---------------- salida BMP ----------------
     def saveBMP(self, filename: str):
         """Guarda el framebuffer (H,W,3) uint8 como BMP 24-bit."""
         h, w, _ = self.framebuffer.shape
