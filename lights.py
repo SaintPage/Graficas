@@ -54,3 +54,36 @@ class DirectionalLight(Light):
 
         spec = clamp01(np.dot(V, R)) ** shininess
         return (self.color * self.intensity * ks * spec).tolist()
+
+
+class PointLight(Light):
+    def __init__(self, color=(1,1,1), intensity=1.0, position=(0,0,0), range=10.0, attenuation=(1.0,0.09,0.032)):
+        super().__init__(color, intensity, "Point")
+        self.position = np.array(position, dtype=float)
+        # range is advisory; attenuation is (constant, linear, quadratic)
+        self.range = float(range)
+        self.attenuation = tuple(attenuation)
+
+    def GetLightColor(self, intercept=None):
+        base = super().GetLightColor()
+        if intercept is None:
+            return base
+        # distancia y atenuación
+        P = np.array(intercept.point, dtype=float)
+        d = np.linalg.norm(self.position - P)
+        c, l, q = self.attenuation
+        att = 1.0 / max(1e-6, c + l * d + q * (d * d))
+        att *= 0.0 if d > self.range else 1.0
+        return (np.array(base) * att).tolist()
+
+    def direction_from_point(self, point):
+        # devuelve el vector dirigido desde el punto hacia la luz (normalizado)
+        p = np.array(point, dtype=float)
+        v = self.position - p
+        n = np.linalg.norm(v)
+        if n == 0:
+            return np.array((0.0, 1.0, 0.0))
+        return v / n
+
+    def distance_to(self, point):
+        return float(np.linalg.norm(self.position - np.array(point, dtype=float)))
