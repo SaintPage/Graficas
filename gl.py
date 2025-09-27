@@ -107,16 +107,22 @@ class Renderer:
             if row_callback and (j % self.ssaa) == 0:
                 row_callback(j // self.ssaa)
 
-        # downsample blocks
-        for y in range(self.height):
-            y0 = y * self.ssaa
-            y1 = y0 + self.ssaa
-            for x in range(self.width):
-                x0 = x * self.ssaa
-                x1 = x0 + self.ssaa
-                block = hr_buf[y0:y1, x0:x1]
-                avg = block.mean(axis=(0,1))
-                self.framebuffer[y, x] = self._to_u8(avg)
+            # If we've completed a full low-res row (ssaa HR rows), downsample that row
+            # into the final framebuffer so partial results are available.
+            if (j % self.ssaa) == (self.ssaa - 1):
+                y_low = j // self.ssaa
+                y0 = y_low * self.ssaa
+                y1 = y0 + self.ssaa
+                # downsample each column block for this row
+                for x_low in range(self.width):
+                    x0 = x_low * self.ssaa
+                    x1 = x0 + self.ssaa
+                    block = hr_buf[y0:y1, x0:x1]
+                    avg = block.mean(axis=(0, 1))
+                    self.framebuffer[y_low, x_low] = self._to_u8(avg)
+
+        # NOTE: after the loop the framebuffer is already filled progressively, so nothing
+        # else is required here. Keep compatibility with previous behavior.
 
     def cast_ray(self, origin, direction, recursion=0):
         O = np.array(origin, dtype=float)
