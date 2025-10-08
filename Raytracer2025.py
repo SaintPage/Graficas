@@ -1,7 +1,7 @@
 import os, sys
 import numpy as np
 from gl import Renderer
-from figures import Plane, Disk, Triangle, AABB
+from figures import Plane, Disk, Triangle, AABB, Cylinder, Torus
 from lights import AmbientLight, DirectionalLight
 from lights import PointLight
 from material import Material, OPAQUE, REFLECTIVE, TRANSPARENT
@@ -58,25 +58,44 @@ objTri= Material(diffuse=(0.25,0.85,0.55), ka=0.08, kd=0.9, ks=0.2, shininess=24
 obj3  = Material(diffuse=(0.9,0.9,0.95), ka=0.02, kd=0.35, ks=0.28, shininess=128, matType=TRANSPARENT, ior=1.8)
 obj4  = Material(diffuse=(0.5,0.35,0.2), ka=0.05, kd=0.8, ks=0.1, shininess=8, matType=OPAQUE)  # small floor disk
 
-# cuarto (normales hacia adentro)
-from figures import Plane, Disk, Triangle, AABB
+# Crear materiales adicionales para las nuevas figuras
+cylinder_opaque = Material(diffuse=(0.8,0.4,0.2), ka=0.08, kd=0.9, ks=0.15, shininess=16, matType=OPAQUE)
+cylinder_reflective = Material(diffuse=(0.7,0.7,0.9), ka=0.05, kd=0.6, ks=0.35, shininess=64, matType=REFLECTIVE, reflectivity=0.6)
+cylinder_transparent = Material(diffuse=(0.9,0.95,0.9), ka=0.02, kd=0.3, ks=0.4, shininess=128, matType=TRANSPARENT, ior=1.5)
+
+torus_opaque = Material(diffuse=(0.9,0.2,0.4), ka=0.08, kd=0.9, ks=0.2, shininess=32, matType=OPAQUE)
+torus_reflective = Material(diffuse=(0.3,0.8,0.3), ka=0.05, kd=0.6, ks=0.4, shininess=80, matType=REFLECTIVE, reflectivity=0.7)
+torus_transparent = Material(diffuse=(0.8,0.9,1.0), ka=0.03, kd=0.25, ks=0.45, shininess=96, matType=TRANSPARENT, ior=1.4)
+
+# Escena de demostración LAB 8 - Solo las nuevas figuras: Cilindros y Torus
 rend.objects = []
 rend.objects += [
-    Plane(position=( 0.0, -1.5, -8.0), normal=( 0, 1, 0), material=floor),   # piso
-    Plane(position=( 0.0,  1.5, -8.0), normal=( 0,-1, 0), material=ceiling ),   # techo
-    Plane(position=( 0.0,  0.0,-12.0), normal=( 0, 0, 1), material=back_wall ),   # pared fondo
-    Plane(position=(-3.0,  0.0, -8.0), normal=( 1, 0, 0), material=left_wall ),   # izquierda
-    Plane(position=( 3.0,  0.0, -8.0), normal=(-1, 0, 0), material=right_wall ),   # derecha
-    # Cubos centrados y un poco a la derecha/izquierda
-    # moved closer to camera (z less negative)
-    AABB (position=(-1.0, -0.75, -7.2), sizes=(1.2,1.2,1.2), material=obj1), # cubo 1
-    AABB (position=( 1.0, -0.75, -6.6), sizes=(1.25,1.25,1.25), material=obj2), # cubo 2 (reflective)
-    # Triángulo vertical, ligeramente elevado
-    Triangle(A=(-0.2,0.0,-6.8), B=(0.6,0.9,-7.0), C=(-0.9,0.9,-7.0), material=objTri),
-    # Ventana circular (disco) en la pared de fondo, con transparencia leve/reflexión
-    Disk(position=(0.0, 0.0, -11.95), normal=(0,0,1), radius=0.7, material=obj3),
-    # Moved small disk to the right wall (decorative wall disk)
-    Disk(position=(2.7, 0.2, -8.0), normal=(-1,0,0), radius=0.5, material=obj4),
+    # Cuarto básico (piso, techo, paredes)
+    Plane(position=( 0.0, -2.0, -8.0), normal=( 0, 1, 0), material=floor),   # piso
+    Plane(position=( 0.0,  2.0, -8.0), normal=( 0,-1, 0), material=ceiling ),   # techo
+    Plane(position=( 0.0,  0.0,-15.0), normal=( 0, 0, 1), material=back_wall ),   # pared fondo
+    Plane(position=(-4.0,  0.0, -8.0), normal=( 1, 0, 0), material=left_wall ),   # izquierda
+    Plane(position=( 4.0,  0.0, -8.0), normal=(-1, 0, 0), material=right_wall ),   # derecha
+    
+    # CILINDROS - 3 instancias con diferentes materiales
+    # Cilindro 1: Opaco, vertical en el lado izquierdo
+    Cylinder(center=(-2.5, -0.5, -10.0), axis=(0, 1, 0), radius=0.4, height=1.8, material=cylinder_opaque),
+    
+    # Cilindro 2: Reflectivo, horizontal en el centro
+    Cylinder(center=(0.0, 0.3, -9.0), axis=(1, 0, 0), radius=0.3, height=2.0, material=cylinder_reflective),
+    
+    # Cilindro 3: Transparente, inclinado en el lado derecho
+    Cylinder(center=(2.2, -0.2, -11.0), axis=(0.3, 1, 0.2), radius=0.35, height=1.5, material=cylinder_transparent),
+    
+    # TORUS - 3 instancias con diferentes materiales
+    # Torus 1: Opaco, grande en el fondo izquierdo
+    Torus(center=(-1.8, 0.5, -13.0), axis=(0, 0, 1), major_radius=0.8, minor_radius=0.25, material=torus_opaque),
+    
+    # Torus 2: Reflectivo, mediano en el centro-derecha
+    Torus(center=(1.5, -0.3, -9.5), axis=(1, 0.5, 0), major_radius=0.6, minor_radius=0.18, material=torus_reflective),
+    
+    # Torus 3: Transparente, pequeño flotando
+    Torus(center=(0.3, 1.0, -8.5), axis=(0, 1, 0), major_radius=0.5, minor_radius=0.15, material=torus_transparent),
 ]
 
 rend.lights = [

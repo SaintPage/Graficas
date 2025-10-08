@@ -152,3 +152,274 @@ class AABB:
         # elegir normal correspondiente al t elegido
         normal = normal_min if t == tmin else normal_max
         return Intercept(P, normal, t, dir, self)
+
+# ---------------- Cylinder ----------------
+class Cylinder:
+    def __init__(self, center, axis, radius, height, material):
+        self.center = np.array(center, dtype=float)
+        self.axis = _norm(axis)  # dirección del eje del cilindro (normalizada)
+        self.radius = float(radius)
+        self.height = float(height)
+        self.material = material
+        
+        # Puntos de los extremos del cilindro
+        half_height = self.height * 0.5
+        self.bottom = self.center - self.axis * half_height
+        self.top = self.center + self.axis * half_height
+
+    def ray_intersect(self, orig, dir):
+        # Algoritmo de intersección rayo-cilindro
+        # Transformamos a un sistema donde el cilindro está alineado con el eje Y
+        
+        # Vector del origen al centro del cilindro
+        oc = orig - self.center
+        
+        # Proyectamos el rayo en el plano perpendicular al eje del cilindro
+        # Componentes paralelas y perpendiculares al eje
+        dir_parallel = np.dot(dir, self.axis) * self.axis
+        dir_perp = dir - dir_parallel
+        
+        oc_parallel = np.dot(oc, self.axis) * self.axis
+        oc_perp = oc - oc_parallel
+        
+        # Resolvemos la intersección en 2D (cilindro infinito)
+        a = np.dot(dir_perp, dir_perp)
+        b = 2.0 * np.dot(oc_perp, dir_perp)
+        c = np.dot(oc_perp, oc_perp) - self.radius * self.radius
+        
+        discriminant = b * b - 4 * a * c
+        
+        if discriminant < 0:
+            return None  # No hay intersección con el cilindro infinito
+        
+        if abs(a) < 1e-8:
+            # Rayo paralelo al eje del cilindro
+            if c > 0:
+                return None  # Fuera del radio
+            # Intersección con las tapas
+            return self._intersect_caps(orig, dir)
+        
+        sqrt_disc = np.sqrt(discriminant)
+        t1 = (-b - sqrt_disc) / (2 * a)
+        t2 = (-b + sqrt_disc) / (2 * a)
+        
+        candidates = []
+        
+        # Verificar ambas intersecciones
+        for t in [t1, t2]:
+            if t <= 1e-4:
+                continue
+                
+            P = orig + dir * t
+            
+            # Verificar si está dentro de la altura del cilindro
+            height_param = np.dot(P - self.center, self.axis)
+            if abs(height_param) <= self.height * 0.5:
+                # Calcular normal (perpendicular al eje, apuntando hacia afuera)
+                center_to_point = P - self.center
+                normal_component = center_to_point - np.dot(center_to_point, self.axis) * self.axis
+                normal = _norm(normal_component)
+                candidates.append((t, P, normal))
+        
+        # También verificar intersección con las tapas
+        cap_result = self._intersect_caps(orig, dir)
+        if cap_result is not None:
+            candidates.append((cap_result.distance, cap_result.point, cap_result.normal))
+        
+        if not candidates:
+            return None
+        
+        # Devolver la intersección más cercana
+        candidates.sort(key=lambda x: x[0])
+        t, P, N = candidates[0]
+        return Intercept(P, N, t, dir, self)
+    
+    def _intersect_caps(self, orig, dir):
+        """Intersección con las tapas circulares del cilindro"""
+        candidates = []
+        
+        # Verificar intersección con cada tapa
+        for cap_center, cap_normal in [(self.bottom, -self.axis), (self.top, self.axis)]:
+            # Intersección rayo-plano
+            denom = np.dot(dir, cap_normal)
+            if abs(denom) < 1e-6:
+                continue  # Paralelo al plano
+            
+            t = np.dot(cap_center - orig, cap_normal) / denom
+            if t <= 1e-4:
+                continue
+            
+            P = orig + dir * t
+            
+            # Verificar si está dentro del radio
+            dist_from_center = np.linalg.norm(P - cap_center)
+            if dist_from_center <= self.radius:
+                candidates.append((t, P, cap_normal))
+        
+        if not candidates:
+            return None
+        
+        # Devolver la intersección más cercana
+        candidates.sort(key=lambda x: x[0])
+        t, P, N = candidates[0]
+        return Intercept(P, N, t, dir, self)
+
+# ---------------- Torus (Dona) ----------------
+class Torus:
+    def __init__(self, center, axis, major_radius, minor_radius, material):
+        self.center = np.array(center, dtype=float)
+        self.axis = _norm(axis)  # eje principal del torus (normalizada)
+        self.major_radius = float(major_radius)  # radio mayor (del centro al tubo)
+        self.minor_radius = float(minor_radius)  # radio menor (grosor del tubo)
+        self.material = material
+        
+        # Crear sistema de coordenadas local
+        # Necesitamos dos vectores perpendiculares al eje
+        if abs(self.axis[0]) < 0.9:
+            temp = np.array([1, 0, 0])
+        else:
+            temp = np.array([0, 1, 0])
+        
+        self.u = _norm(np.cross(self.axis, temp))
+        self.v = _norm(np.cross(self.axis, self.u))
+
+    def ray_intersect(self, orig, dir):
+        # Transformar el rayo al sistema de coordenadas local del torus
+        # donde el eje principal está alineado con Z
+        
+        # Trasladar origen
+        local_orig = orig - self.center
+        
+        # Rotar al sistema local
+        ox = np.dot(local_orig, self.u)
+        oy = np.dot(local_orig, self.v)
+        oz = np.dot(local_orig, self.axis)
+        
+        dx = np.dot(dir, self.u)
+        dy = np.dot(dir, self.v)
+        dz = np.dot(dir, self.axis)
+        
+        # Parámetros del torus
+        R = self.major_radius  # radio mayor
+        r = self.minor_radius  # radio menor
+        
+        # Resolver la ecuación cuártica del torus
+        # (x² + y² + z² + R² - r²)² = 4R²(x² + y²)
+        
+        # Coeficientes para t en la ecuación paramétrica del rayo
+        # P(t) = orig + t * dir = (ox + t*dx, oy + t*dy, oz + t*dz)
+        
+        # Términos intermedios
+        sum_d_sqr = dx*dx + dy*dy + dz*dz
+        sum_o_sqr = ox*ox + oy*oy + oz*oz
+        sum_od = ox*dx + oy*dy + oz*dz
+        
+        k = sum_o_sqr + R*R - r*r
+        
+        # Coeficientes de la ecuación cuártica At⁴ + Bt³ + Ct² + Dt + E = 0
+        A = sum_d_sqr * sum_d_sqr
+        B = 4.0 * sum_d_sqr * sum_od
+        C = 2.0 * sum_d_sqr * k + 4.0 * sum_od * sum_od + 4.0 * R*R * (dx*dx + dy*dy)
+        D = 4.0 * k * sum_od + 8.0 * R*R * (ox*dx + oy*dy)
+        E = k*k + 4.0 * R*R * (ox*ox + oy*oy) - 4.0 * R*R * r*r
+        
+        # Resolver ecuación cuártica
+        roots = self._solve_quartic(A, B, C, D, E)
+        
+        valid_intersections = []
+        
+        for t in roots:
+            if t <= 1e-4:
+                continue
+            
+            # Punto de intersección
+            P = orig + t * dir
+            
+            # Calcular normal
+            normal = self._compute_normal(P)
+            if normal is not None:
+                valid_intersections.append((t, P, normal))
+        
+        if not valid_intersections:
+            return None
+        
+        # Devolver la intersección más cercana
+        valid_intersections.sort(key=lambda x: x[0])
+        t, P, N = valid_intersections[0]
+        return Intercept(P, N, t, dir, self)
+    
+    def _solve_quartic(self, a, b, c, d, e):
+        """Resuelve una ecuación cuártica usando método numérico simplificado"""
+        if abs(a) < 1e-10:
+            return self._solve_cubic(b, c, d, e)
+        
+        # Normalizar coeficientes
+        b /= a
+        c /= a 
+        d /= a
+        e /= a
+        
+        # Método más preciso usando numpy para casos complejos
+        try:
+            coeffs = [1, b, c, d, e]
+            numpy_roots = np.roots(coeffs)
+            roots = []
+            
+            for root in numpy_roots:
+                if np.isreal(root) and np.real(root) > 1e-4:
+                    t_val = float(np.real(root))
+                    if not any(abs(t_val - r) < 1e-4 for r in roots):
+                        roots.append(t_val)
+            return roots
+        except:
+            return []
+    
+    def _solve_cubic(self, a, b, c, d):
+        """Resuelve ecuación cúbica"""
+        try:
+            coeffs = [a, b, c, d]
+            numpy_roots = np.roots(coeffs)
+            roots = []
+            
+            for root in numpy_roots:
+                if np.isreal(root) and np.real(root) > 1e-4:
+                    roots.append(float(np.real(root)))
+            return roots
+        except:
+            return []
+    
+    def _compute_normal(self, point):
+        """Calcula la normal en un punto del torus"""
+        # Transformar punto al sistema local
+        local_point = point - self.center
+        
+        x = np.dot(local_point, self.u)
+        y = np.dot(local_point, self.v)
+        z = np.dot(local_point, self.axis)
+        
+        # Distancia del punto al eje principal en el plano XY
+        rho = np.sqrt(x*x + y*y)
+        
+        if rho < 1e-8:
+            return None  # Punto en el eje, normal indefinida
+        
+        # Punto en el círculo central más cercano
+        circle_x = self.major_radius * x / rho
+        circle_y = self.major_radius * y / rho
+        circle_z = 0.0
+        
+        # Vector del círculo central al punto
+        dx = x - circle_x
+        dy = y - circle_y
+        dz = z - circle_z
+        
+        # Normal en coordenadas locales
+        local_normal = np.array([dx, dy, dz])
+        local_normal = _norm(local_normal)
+        
+        # Transformar de vuelta al sistema global
+        global_normal = (local_normal[0] * self.u + 
+                        local_normal[1] * self.v + 
+                        local_normal[2] * self.axis)
+        
+        return _norm(global_normal)
