@@ -8,7 +8,7 @@ class Light(object):
         self.lightType = lightType
 
     def GetLightColor(self, intercept=None):
-        # luz base, sin atenuar
+        # luz base, sin atenuar|
         return (self.color * self.intensity).tolist()
 
     # por defecto sin especular

@@ -423,3 +423,138 @@ class Torus:
                         local_normal[2] * self.axis)
         
         return _norm(global_normal)
+
+# ---------------- Cone ----------------
+class Cone:
+    def __init__(self, apex, base_center, radius, material):
+        self.apex = np.array(apex, dtype=float)
+        self.base_center = np.array(base_center, dtype=float)
+        self.radius = float(radius)
+        self.material = material
+        
+        # Calcular eje y altura del cono
+        self.axis = self.base_center - self.apex
+        self.height = np.linalg.norm(self.axis)
+        self.axis_unit = _norm(self.axis)
+
+    def ray_intersect(self, orig, dir):
+        # Trasladar al sistema donde el apex está en el origen
+        orig_local = orig - self.apex
+        
+        # Proyección en el eje del cono
+        k = self.radius / self.height
+        k_sq = k * k
+        
+        # Coeficientes de la ecuación cuadrática para la superficie lateral
+        axis_dot_dir = np.dot(self.axis_unit, dir)
+        axis_dot_orig = np.dot(self.axis_unit, orig_local)
+        
+        a = np.dot(dir, dir) - (1 + k_sq) * axis_dot_dir * axis_dot_dir
+        b = 2 * (np.dot(orig_local, dir) - (1 + k_sq) * axis_dot_orig * axis_dot_dir)
+        c = np.dot(orig_local, orig_local) - (1 + k_sq) * axis_dot_orig * axis_dot_orig
+        
+        discriminant = b * b - 4 * a * c
+        candidates = []
+        
+        if discriminant >= 0 and abs(a) > 1e-8:
+            sqrt_disc = np.sqrt(discriminant)
+            t1 = (-b - sqrt_disc) / (2 * a)
+            t2 = (-b + sqrt_disc) / (2 * a)
+            
+            for t in [t1, t2]:
+                if t <= 1e-4:
+                    continue
+                    
+                P = orig + t * dir
+                P_local = P - self.apex
+                
+                # Verificar si está dentro de la altura del cono
+                height_param = np.dot(P_local, self.axis_unit)
+                if 0 <= height_param <= self.height:
+                    # Calcular normal de la superficie lateral
+                    # Normal apunta hacia afuera del cono
+                    proj_on_axis = height_param * self.axis_unit
+                    radial_component = P_local - proj_on_axis
+                    
+                    # Normal del cono en coordenadas locales
+                    normal_radial = _norm(radial_component)
+                    slope_factor = self.radius / self.height
+                    normal = _norm(normal_radial - slope_factor * self.axis_unit)
+                    
+                    candidates.append((t, P, normal))
+        
+        # Verificar intersección con la base
+        base_result = self._intersect_base(orig, dir)
+        if base_result is not None:
+            candidates.append((base_result.distance, base_result.point, base_result.normal))
+        
+        if not candidates:
+            return None
+        
+        # Devolver la intersección más cercana
+        candidates.sort(key=lambda x: x[0])
+        t, P, N = candidates[0]
+        return Intercept(P, N, t, dir, self)
+    
+    def _intersect_base(self, orig, dir):
+        """Intersección con la base circular del cono"""
+        # Intersección rayo-plano de la base
+        denom = np.dot(dir, self.axis_unit)
+        if abs(denom) < 1e-6:
+            return None
+        
+        t = np.dot(self.base_center - orig, self.axis_unit) / denom
+        if t <= 1e-4:
+            return None
+        
+        P = orig + t * dir
+        
+        # Verificar si está dentro del radio de la base
+        dist_from_center = np.linalg.norm(P - self.base_center)
+        if dist_from_center <= self.radius:
+            return Intercept(P, self.axis_unit, t, dir, self)
+        
+        return None
+
+# ---------------- Ellipsoid ----------------
+class Ellipsoid:
+    def __init__(self, center, radii, material):
+        self.center = np.array(center, dtype=float)
+        self.radii = np.array(radii, dtype=float)  # (rx, ry, rz)
+        self.material = material
+
+    def ray_intersect(self, orig, dir):
+        # Trasladar al sistema donde el elipsoide está centrado en el origen
+        oc = orig - self.center
+        
+        # Normalizar por los radii para convertir a esfera unitaria
+        oc_norm = oc / self.radii
+        dir_norm = dir / self.radii
+        
+        # Resolver intersección con esfera unitaria
+        a = np.dot(dir_norm, dir_norm)
+        b = 2.0 * np.dot(oc_norm, dir_norm)
+        c = np.dot(oc_norm, oc_norm) - 1.0
+        
+        discriminant = b * b - 4 * a * c
+        
+        if discriminant < 0:
+            return None
+        
+        sqrt_disc = np.sqrt(discriminant)
+        t1 = (-b - sqrt_disc) / (2 * a)
+        t2 = (-b + sqrt_disc) / (2 * a)
+        
+        t = t1 if t1 > 1e-4 else t2
+        if t <= 1e-4:
+            return None
+        
+        P = orig + t * dir
+        
+        # Calcular normal del elipsoide
+        # La normal en un elipsoide es: (2*(P-C)/radii²) normalizada
+        P_local = P - self.center
+        normal_unnorm = 2 * P_local / (self.radii * self.radii)
+        normal = _norm(normal_unnorm)
+        
+        return Intercept(P, normal, t, dir, self)
