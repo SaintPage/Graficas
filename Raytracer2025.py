@@ -17,7 +17,7 @@ else:
 
 # Instantiate renderer with chosen params
 print(f"Renderer resolution: {final_width}x{final_height}, SSAA={final_ssaa}")
-rend = Renderer(final_width, final_height, fov=60, bg_color=(0.02, 0.02, 0.02), ssaa=final_ssaa)
+rend = Renderer(final_width, final_height, fov=50, bg_color=(0.02, 0.02, 0.02), ssaa=final_ssaa)
 
 # ENVIRONMENT MAP (5 puntos)
 try:
@@ -54,6 +54,9 @@ accent_bronze = Material(diffuse=(0.78,0.65,0.45), ka=0.2, kd=0.7, ks=0.5, shini
 # Material especial: Esfera pequeña amarillenta/dorada (como en imagen de referencia)
 golden_sphere = Material(diffuse=(0.95,0.85,0.65), ka=0.25, kd=0.7, ks=0.6, shininess=85, matType=REFLECTIVE, reflectivity=0.35)
 
+# Material adicional: Cromo/metal altamente reflectante (para la esfera derecha)
+chrome_metal = Material(diffuse=(0.98,0.98,0.98), ka=0.02, kd=0.05, ks=1.0, shininess=300, matType=REFLECTIVE, reflectivity=0.95)
+
 # ===============================================
 # ILUMINACIÓN NATURAL SUAVE (inspirada en la referencia)
 # ===============================================
@@ -64,9 +67,9 @@ rend.lights.append(AmbientLight(intensity=0.35))
 rend.lights.append(DirectionalLight(direction=[0.3, -1, -0.5], intensity=0.8, color=[1.0, 0.98, 0.9]))
 
 # Luces puntuales suaves para iluminación arquitectónica natural
-rend.lights.append(PointLight(position=[0, 4, -5], intensity=1.2, color=[1.0, 0.95, 0.85]))   # Luz principal cálida
+rend.lights.append(PointLight(position=[0.6, 3.5, -3.2], intensity=1.4, color=[1.0, 0.98, 0.9]))   # Luz principal cálida, posicionada para highlights
 rend.lights.append(PointLight(position=[-6, 3, -8], intensity=0.8, color=[0.95, 0.93, 0.88])) # Luz lateral suave
-rend.lights.append(PointLight(position=[6, 3, -12], intensity=0.8, color=[0.95, 0.93, 0.88])) # Luz lateral suave
+rend.lights.append(PointLight(position=[6, 2.6, -6], intensity=0.9, color=[0.95, 0.93, 0.88])) # Luz lateral para reflejos
 
 # Luz de relleno frontal muy suave
 rend.lights.append(PointLight(position=[0, 2, 8], intensity=0.6, color=[1.0, 0.98, 0.95]))
@@ -81,7 +84,7 @@ rend.objects = []
 # --- ARQUITECTURA BASE (inspirada en la referencia) ---
 rend.objects += [
     # Suelo reflectante beige (como en la referencia)
-    Plane(position=(0.0, -2.0, -10.0), normal=(0, 1, 0), material=reflective_floor),
+    Plane(position=(0.0, -2.2, -10.0), normal=(0, 1, 0), material=reflective_floor),
     
     # Techo alto con iluminación suave
     Plane(position=(0.0, 6.0, -10.0), normal=(0, -1, 0), material=warm_marble),
@@ -105,13 +108,16 @@ rend.objects += [
 # Grupo 2: Esferas translúcidas EN PRIMER PLANO EXTREMO como en la nueva imagen de referencia
 rend.objects += [
     # Esfera principal grande translúcida (izquierda en referencia) - PRIMER PLANO EXTREMO
-    Sphere(position=[-2.2, 0.0, -1.5], radius=1.8, material=translucent_glass),
+    Sphere(position=[-2.8, -0.1, -3.8], radius=2.0, material=translucent_glass),
     
-    # Esfera secundaria CON EFECTO VIDRIO REALISTA (derecha en referencia) - PRIMER PLANO EXTREMO  
-    Sphere(position=[2.0, 0.2, -0.8], radius=1.5, material=realistic_glass),
+    # Esfera secundaria METÁLICA (derecha en referencia) - REFLECTANTE CROMO
+    Sphere(position=[2.6, 0.0, -3.8], radius=1.6, material=chrome_metal),
+    
+    # Esfera pequeña MÁS ABAJO de la esfera izquierda (nueva en referencia)
+    Sphere(position=[2.4, -1.0, -1.6], radius=1.0, material=warm_marble),
     
     # Esfera pequeña amarillenta/dorada (como en imagen de referencia) - NUEVA!
-    Sphere(position=[0.8, 0.5, -3.2], radius=0.4, material=golden_sphere),
+    Sphere(position=[-2.9, -2.15, -3.6], radius=0.35, material=golden_sphere),
 ]
 
 # --- ELEMENTOS ARQUITECTÓNICOS VERTICALES ---
@@ -130,8 +136,8 @@ rend.objects += [
 # --- ELEMENTOS CÓNICOS COMO ACENTOS ARQUITECTÓNICOS ---
 # Grupo 4: Conos como elementos direccionales y de transición
 rend.objects += [
-    # Cono invertido como elemento escultórico
-    Cone(apex=[0, 4.5, -15], base_center=[0, 1.5, -15], radius=1.2, material=accent_bronze),
+    # Cono en la plataforma CENTRAL circular (base circular central)
+    Cone(apex=[0, 0.5, -10], base_center=[0, -1.6, -10], radius=1.0, material=accent_bronze),
     
     # Conos laterales como pilares cónicos
     Cone(apex=[-8, 3, -16], base_center=[-8, -1, -16], radius=0.8, material=matte_beige),
@@ -155,7 +161,7 @@ rend.objects += [
 
 
 # Configurar cámara para vista óptima con esferas en PRIMER PLANO (como en nueva imagen de referencia)
-rend.camPos = np.array([0, 0.5, 3.5], dtype=float)  # Más cerca para capturar esferas en primer plano
+rend.camPos = np.array([0.4, 0.25, 2.6], dtype=float)  # Ajustada: ligeramente a la derecha y más cerca
 
 # Execute render
 print("🔄 Renderizando escena con ULTRA-SIMILITUD a referencia...")
