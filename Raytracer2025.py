@@ -8,12 +8,55 @@ from material import Material, OPAQUE, REFLECTIVE, TRANSPARENT
 
 NO_GUI = ('--nogui' in sys.argv) or os.environ.get('RAY_NO_GUI') == '1'
 PREVIEW = ('--preview' in sys.argv) or os.environ.get('RAY_PREVIEW') == '1'
+LIVE = ('--live' in sys.argv) or os.environ.get('RAY_LIVE') == '1'
+TINY = ('--tiny' in sys.argv) or os.environ.get('RAY_TINY') == '1'
+PROGRESSIVE = ('--progressive' in sys.argv) or os.environ.get('RAY_PROGRESSIVE') == '1'
+# window scale for pygame progressive preview: --scale N or RAY_SCALE env var
+SCALE_ARG = None
+for a in sys.argv:
+    if a.startswith('--scale='):
+        try:
+            SCALE_ARG = int(a.split('=', 1)[1])
+        except Exception:
+            SCALE_ARG = None
+# environment override
+if os.environ.get('RAY_SCALE'):
+    try:
+        SCALE_ARG = int(os.environ.get('RAY_SCALE'))
+    except Exception:
+        pass
 if PREVIEW:
     final_width, final_height, final_ssaa = 640, 360, 1
     print("🔍 MODO PREVIEW: Resolución reducida para render rápido")
 else:
     final_width, final_height, final_ssaa = 960, 540, 1
     print("🖼️ MODO COMPLETO: Resolución estándar para calidad final")
+
+# tiny override for very fast smoke tests
+if TINY:
+    final_width, final_height, final_ssaa = 160, 90, 1
+    print("⚡ MODO TINY: resolución mínima para pruebas rápidas")
+
+# custom resolution override: --res=WIDTHxHEIGHT or env RAY_RES
+RES_ARG = None
+for a in sys.argv:
+    if a.startswith('--res='):
+        RES_ARG = a.split('=', 1)[1]
+        break
+if os.environ.get('RAY_RES'):
+    RES_ARG = os.environ.get('RAY_RES')
+if RES_ARG:
+    try:
+        w,h = RES_ARG.lower().split('x')
+        w = int(w); h = int(h)
+        # clamp to reasonable maximum to avoid accidental extremely long renders
+        max_w, max_h = 1920, 1080
+        w = max(16, min(max_w, w))
+        h = max(16, min(max_h, h))
+        final_width, final_height = w, h
+        print(f"📐 Resolución personalizada activada: {final_width}x{final_height}")
+    except Exception:
+        print(f"[WARN] formato de --res inválido: {RES_ARG}; se ignora")
 
 # Instantiate renderer with chosen params
 print(f"Renderer resolution: {final_width}x{final_height}, SSAA={final_ssaa}")
@@ -52,7 +95,10 @@ reflective_floor = Material(diffuse=(0.90,0.88,0.85), ka=0.15, kd=0.7, ks=0.4, s
 accent_bronze = Material(diffuse=(0.78,0.65,0.45), ka=0.2, kd=0.7, ks=0.5, shininess=64, matType=REFLECTIVE, reflectivity=0.3)
 
 # Material especial: Esfera pequeña amarillenta/dorada (como en imagen de referencia)
-golden_sphere = Material(diffuse=(0.95,0.85,0.65), ka=0.25, kd=0.7, ks=0.6, shininess=85, matType=REFLECTIVE, reflectivity=0.35)
+golden_sphere = Material(diffuse=(1.00,0.84,0.36), ka=0.08, kd=0.25, ks=0.95, shininess=220, matType=REFLECTIVE, reflectivity=0.92)
+
+# Material para esfera blanca brillante (porcelana / cerámica muy pulida)
+white_gloss = Material(diffuse=(0.995,0.995,0.995), ka=0.01, kd=0.02, ks=0.95, shininess=220, matType=REFLECTIVE, reflectivity=0.18)
 
 # Material adicional: Cromo/metal altamente reflectante (para la esfera derecha)
 chrome_metal = Material(diffuse=(0.98,0.98,0.98), ka=0.02, kd=0.05, ks=1.0, shininess=300, matType=REFLECTIVE, reflectivity=0.95)
@@ -107,17 +153,19 @@ rend.objects += [
 # --- ESFERAS TRANSLÚCIDAS (elemento principal de la referencia) ---
 # Grupo 2: Esferas translúcidas EN PRIMER PLANO EXTREMO como en la nueva imagen de referencia
 rend.objects += [
-    # Esfera principal grande translúcida (izquierda en referencia) - PRIMER PLANO EXTREMO
-    Sphere(position=[-2.8, -0.1, -3.8], radius=2.0, material=translucent_glass),
-    
-    # Esfera secundaria METÁLICA (derecha en referencia) - REFLECTANTE CROMO
-    Sphere(position=[2.6, 0.0, -3.8], radius=1.6, material=chrome_metal),
-    
-    # Esfera pequeña MÁS ABAJO de la esfera izquierda (nueva en referencia)
-    Sphere(position=[2.4, -1.0, -1.6], radius=1.0, material=warm_marble),
-    
-    # Esfera pequeña amarillenta/dorada (como en imagen de referencia) - NUEVA!
-    Sphere(position=[-2.9, -2.15, -3.6], radius=0.35, material=golden_sphere),
+    # Esfera blanca brillante a la izquierda (similar a la referencia)
+    Sphere(position=[-2.8, -0.3, -3.2], radius=1.9, material=white_gloss),
+
+    # Esfera metálica cromada a la derecha (reflejos fuertes)
+    Sphere(position=[2.6, 0.0, -3.2], radius=1.6, material=chrome_metal),
+
+    # Esfera pequeña dorada en primer plano — color sol / highlight (más pequeña)
+    # Nudge: x +0.15, y +0.05, z +0.20
+    Sphere(position=[-0.45, -1.25, -1.8], radius=0.22, material=golden_sphere),
+
+    # Opcional: elemento decorativo pequeño para equilibrio (tono mármol)
+    # Desplazado para evitar superposición con la esfera derecha (x+0.6, y-0.05, z+0.4)
+    Sphere(position=[2.2, 0.35, -1.6], radius=0.9, material=warm_marble),
 ]
 
 # --- ELEMENTOS ARQUITECTÓNICOS VERTICALES ---
@@ -173,7 +221,78 @@ def _row_callback(j):
         progress = (j / rend.height) * 100
         print(f"    Progreso: {progress:.1f}% (fila {j}/{rend.height})")
 
-rend.render(row_callback=_row_callback)
+# If live preview requested and GUI allowed, create a small Tk window and update it
+# periodically from the row callback. We avoid blocking mainloop by calling root.update()
+root = None
+label = None
+if not NO_GUI and LIVE:
+    try:
+        import tkinter as tk
+        from PIL import Image, ImageTk
+
+        root = tk.Tk()
+        root.title(f"Live Preview - {final_width}x{final_height}")
+        # initial image from (empty) framebuffer
+        pil_image = Image.fromarray(rend.framebuffer)
+        photo = ImageTk.PhotoImage(pil_image)
+        label = tk.Label(root, image=photo)
+        label.image = photo
+        label.pack()
+        print("🔴 Live preview enabled: ventana creada y se irá actualizando durante el render")
+    except Exception as e:
+        print(f"[WARN] No se pudo habilitar live preview: {e}")
+        root = None
+
+# choose how often to refresh the preview (in rows)
+_preview_update_every = max(1, final_height // 40)
+
+def _row_callback_live(j):
+    # original progress logging
+    if j % 40 == 0:
+        progress = (j / rend.height) * 100
+        print(f"    Progreso: {progress:.1f}% (fila {j}/{rend.height})")
+
+    # update GUI preview occasionally
+    if root is not None and label is not None and (j % _preview_update_every) == 0:
+        try:
+            from PIL import Image, ImageTk
+            pil_image = Image.fromarray(rend.framebuffer)
+            photo = ImageTk.PhotoImage(pil_image)
+            label.configure(image=photo)
+            label.image = photo
+            # process pending GUI events so window stays responsive
+            root.update()
+        except Exception:
+            # silently ignore GUI update errors during render
+            pass
+
+# pick callback depending on whether live preview is active
+cb = _row_callback_live if (not NO_GUI and LIVE and root is not None) else _row_callback
+
+# If progressive mode requested and available, use pygame progressive renderer
+if PROGRESSIVE:
+    try:
+        # compute scale: allow up to 8x when requested; default auto chooses
+        # a scale that yields a window width <= max_vis_width (if possible)
+        max_vis_width = 1200
+        max_scale_allowed = 8
+        if SCALE_ARG and SCALE_ARG >= 1:
+            scale = max(1, min(max_scale_allowed, int(SCALE_ARG)))
+        else:
+            # auto scale: try to fit to max_vis_width but clamp to [1, max_scale_allowed]
+            auto = max(1, min(max_scale_allowed, max_vis_width // max(1, rend.width)))
+            scale = auto
+        WINDOW_W = int(rend.width * scale)
+        WINDOW_H = int(rend.height * scale)
+        print(f"🔳 Progressive window: {WINDOW_W}x{WINDOW_H} (scale={scale})")
+        final_img = rend.render_progressive(screen=None, window_size=(WINDOW_W, WINDOW_H))
+        # copy into framebuffer for saving
+        rend.framebuffer = final_img.astype(np.uint8)
+    except Exception as e:
+        print(f"[WARN] render_progressive failed: {e}; falling back to standard render")
+        rend.render(row_callback=cb)
+else:
+    rend.render(row_callback=cb)
 render_time = time.time() - start_time
 
 # Save the image 

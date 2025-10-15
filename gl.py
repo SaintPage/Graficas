@@ -1,6 +1,11 @@
-# gl.py
 import numpy as np
 from PIL import Image
+import math
+try:
+    import pygame
+    _HAS_PYGAME = True
+except Exception:
+    _HAS_PYGAME = False
 
 class Renderer:
     def __init__(self, width, height, fov=60, bg_color=(0, 0, 0), ssaa=1):
@@ -199,3 +204,56 @@ class Renderer:
                 bgr = row[:, [2, 1, 0]]
                 f.write(bgr.tobytes())
                 if padding: f.write(pad)
+
+    # Progressive real-time render that updates a pygame surface row-by-row.
+    # screen can be a pygame.Surface provided by the caller, or None to create
+    # a new window sized (WINDOW_W, WINDOW_H). The method returns the final
+    # framebuffer as uint8 array (H x W x 3).
+    def render_progressive(self, screen=None, window_size=None):
+        if not _HAS_PYGAME:
+            raise RuntimeError('pygame is required for render_progressive')
+
+        W, H = int(self.width), int(self.height)
+        aspect = self.aspect
+        # helper to convert linear color to sRGB-like for display
+        def to_srgb(img):
+            # simple gamma correction (approx sRGB)
+            return np.clip(img, 0.0, 1.0) ** (1.0 / 2.2)
+
+        # create screen if not provided
+        if screen is None:
+            if window_size is None:
+                window_size = (self.width, self.height)
+            pygame.init()
+            screen = pygame.display.set_mode(window_size)
+            pygame.display.set_caption('Progressive Render')
+
+        # working float image
+        img = np.zeros((H, W, 3), dtype=np.float32)
+        scale = math.tan(self.fov * 0.5)
+
+        for y in range(H):
+            # handle quit events so window stays responsive
+            for ev in pygame.event.get():
+                if ev.type == pygame.QUIT:
+                    pygame.quit()
+                    return (np.clip(img,0,1) * 255).astype(np.uint8)
+
+            py = (1 - 2 * ((y + 0.5) / H)) * scale
+            for x in range(W):
+                px = (2 * ((x + 0.5) / W) - 1) * scale * aspect
+                # note: in this renderer the camera looks towards -Z, so dir z = -1
+                dir_cam = np.array((px, py, -1.0), dtype=float)
+                dir_cam /= (np.linalg.norm(dir_cam) + 1e-8)
+                img[y, x] = np.array(self.cast_ray(self.camPos, dir_cam), dtype=np.float32)
+
+            # draw current image to surface and scale to window
+            surf_arr = (to_srgb(img) * 255).astype(np.uint8)
+            # pygame expects (w,h,3) with axes swapped from numpy default
+            surf = pygame.surfarray.make_surface(surf_arr.swapaxes(0, 1))
+            if window_size is not None and window_size != (W, H):
+                surf = pygame.transform.smoothscale(surf, window_size)
+            screen.blit(surf, (0, 0))
+            pygame.display.flip()
+
+        return (np.clip(img, 0, 1) * 255).astype(np.uint8)
