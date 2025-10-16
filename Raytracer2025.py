@@ -104,7 +104,7 @@ warm_white = Material(diffuse=(0.95,0.93,0.90), ka=0.3, kd=0.8, ks=0.2, shinines
 reflective_floor = Material(diffuse=(0.90,0.88,0.85), ka=0.12, kd=0.65, ks=0.45, shininess=56, matType=REFLECTIVE, reflectivity=0.30)
 accent_bronze = Material(diffuse=(0.78,0.65,0.45), ka=0.2, kd=0.7, ks=0.5, shininess=64, matType=REFLECTIVE, reflectivity=0.3)
 
-golden_sphere = Material(diffuse=(0.98,0.82,0.34), ka=0.04, kd=0.32, ks=0.95, shininess=220, matType=REFLECTIVE, reflectivity=0.85)
+golden_sphere = Material(diffuse=(1.00,0.78,0.20), ka=0.08, kd=0.60, ks=0.85, shininess=280, matType=REFLECTIVE, reflectivity=0.35)
 
 white_gloss = Material(diffuse=(1.0, 1.0, 1.0), ka=0.02, kd=0.12, ks=0.9, shininess=220, matType=REFLECTIVE, reflectivity=0.12)
 
@@ -112,19 +112,22 @@ chrome_metal = Material(diffuse=(0.98,0.98,0.98), ka=0.02, kd=0.05, ks=1.0, shin
 
 
 # ILUMINACIÓN NATURAL SUAVE 
-# Luz ambiente cálida como en la imagen de referencia
-rend.lights.append(AmbientLight(intensity=0.35))
+# Incrementamos la iluminación general para que la escena no quede tan oscura
+rend.lights.append(AmbientLight(intensity=0.60))
 
 # Luz direccional suave simulando luz natural de ventana
-rend.lights.append(DirectionalLight(direction=[0.3, -1, -0.5], intensity=0.8, color=[1.0, 0.98, 0.9]))
+rend.lights.append(DirectionalLight(direction=[0.3, -1, -0.5], intensity=0.9, color=[1.0, 0.98, 0.9]))
 
-# Luces puntuales suaves para iluminación arquitectónica natural
-rend.lights.append(PointLight(position=[0.6, 3.5, -3.2], intensity=1.4, color=[1.0, 0.98, 0.9]))   # Luz principal cálida, posicionada para highlights
-rend.lights.append(PointLight(position=[-6, 3, -8], intensity=0.8, color=[0.95, 0.93, 0.88])) # Luz lateral suave
-rend.lights.append(PointLight(position=[6, 2.6, -6], intensity=0.9, color=[0.95, 0.93, 0.88])) # Luz lateral para reflejos
+# Luces puntuales suavizadas pero con más aporte para levantar reflejos
+rend.lights.append(PointLight(position=[0.6, 3.5, -3.2], intensity=1.8, color=[1.0, 0.98, 0.9]))   # Luz principal cálida, posicionada para highlights
+rend.lights.append(PointLight(position=[-6, 3, -8], intensity=1.0, color=[0.95, 0.93, 0.88])) # Luz lateral suave
+rend.lights.append(PointLight(position=[6, 2.6, -6], intensity=1.2, color=[0.95, 0.93, 0.88])) # Luz lateral para reflejos
 
 # Luz de relleno frontal muy suave
 rend.lights.append(PointLight(position=[0, 2, 8], intensity=0.6, color=[1.0, 0.98, 0.95]))
+
+# Pequeña luz cálida cerca de la esfera dorada para acentuar el tono del metal
+rend.lights.append(PointLight(position=[-0.5, -0.2, -1.2], intensity=1.6, color=[1.0, 0.92, 0.55]))
 
 print(" Iluminación NATURAL configurada (6 luces) - Estilo arquitectónico minimalista")
 
