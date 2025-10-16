@@ -95,7 +95,9 @@ class Material(object):
             if hit is not None:
                 Rcol = hit.obj.material.GetSurfaceColor(hit, renderer, recursion + 1)
             else:
-                Rcol = renderer.glEnvMapColor(ro, R)
+                # sample envmap and tint by material diffuse for colored metals
+                envc = np.array(renderer.glEnvMapColor(ro, R))
+                Rcol = tuple(np.clip(envc * self.diffuse, 0, 1))
 
             color = (1.0 - self.reflectivity) * base + self.reflectivity * np.array(Rcol)
             return tuple(np.clip(color, 0, 1))

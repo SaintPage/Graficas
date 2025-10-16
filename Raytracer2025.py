@@ -1,4 +1,17 @@
 import os, sys
+import builtins
+
+
+def _silent_print(*args, **kwargs):
+    return None
+
+# Only suppress print output when user requests it via --quiet or env RAY_QUIET=1
+QUIET = ('--quiet' in sys.argv) or os.environ.get('RAY_QUIET') == '1'
+if QUIET:
+    builtins.print = _silent_print
+    # also hide pygame support prompt when quiet
+    os.environ['PYGAME_HIDE_SUPPORT_PROMPT'] = '1'
+
 import numpy as np
 from gl import Renderer
 from figures import Plane, Disk, Triangle, AABB, Cylinder, Torus, Cone, Ellipsoid, Sphere
@@ -27,10 +40,10 @@ if os.environ.get('RAY_SCALE'):
         pass
 if PREVIEW:
     final_width, final_height, final_ssaa = 640, 360, 1
-    print("🔍 MODO PREVIEW: Resolución reducida para render rápido")
+    print("")
 else:
     final_width, final_height, final_ssaa = 960, 540, 1
-    print("🖼️ MODO COMPLETO: Resolución estándar para calidad final")
+    print(" ")
 
 # tiny override for very fast smoke tests
 if TINY:
@@ -70,9 +83,6 @@ except Exception as e:
     print(f" Environment map failed to load: {e}")
     print("Continuing without environment map...")
 
-# ===============================================
-# MATERIALES INSPIRADOS EN LA IMAGEN DE REFERENCIA (20 puntos)
-# ===============================================
 
 # Material 1: Mármol beige cálido (arquitectura) - Color base de la referencia
 warm_marble = Material(diffuse=(0.92,0.89,0.82), ka=0.25, kd=0.8, ks=0.3, shininess=64, matType=REFLECTIVE, reflectivity=0.15)
@@ -91,21 +101,17 @@ matte_beige = Material(diffuse=(0.88,0.84,0.76), ka=0.3, kd=0.9, ks=0.1, shinine
 
 # Materiales adicionales para variedad y detalle
 warm_white = Material(diffuse=(0.95,0.93,0.90), ka=0.3, kd=0.8, ks=0.2, shininess=32, matType=OPAQUE)
-reflective_floor = Material(diffuse=(0.90,0.88,0.85), ka=0.15, kd=0.7, ks=0.4, shininess=48, matType=REFLECTIVE, reflectivity=0.25)
+reflective_floor = Material(diffuse=(0.90,0.88,0.85), ka=0.12, kd=0.65, ks=0.45, shininess=56, matType=REFLECTIVE, reflectivity=0.30)
 accent_bronze = Material(diffuse=(0.78,0.65,0.45), ka=0.2, kd=0.7, ks=0.5, shininess=64, matType=REFLECTIVE, reflectivity=0.3)
 
-# Material especial: Esfera pequeña amarillenta/dorada (como en imagen de referencia)
-golden_sphere = Material(diffuse=(1.00,0.84,0.36), ka=0.08, kd=0.25, ks=0.95, shininess=220, matType=REFLECTIVE, reflectivity=0.92)
+golden_sphere = Material(diffuse=(0.98,0.82,0.34), ka=0.04, kd=0.32, ks=0.95, shininess=220, matType=REFLECTIVE, reflectivity=0.85)
 
-# Material para esfera blanca brillante (porcelana / cerámica muy pulida)
-white_gloss = Material(diffuse=(0.995,0.995,0.995), ka=0.01, kd=0.02, ks=0.95, shininess=220, matType=REFLECTIVE, reflectivity=0.18)
+white_gloss = Material(diffuse=(1.0, 1.0, 1.0), ka=0.02, kd=0.12, ks=0.9, shininess=220, matType=REFLECTIVE, reflectivity=0.12)
 
-# Material adicional: Cromo/metal altamente reflectante (para la esfera derecha)
 chrome_metal = Material(diffuse=(0.98,0.98,0.98), ka=0.02, kd=0.05, ks=1.0, shininess=300, matType=REFLECTIVE, reflectivity=0.95)
 
-# ===============================================
-# ILUMINACIÓN NATURAL SUAVE (inspirada en la referencia)
-# ===============================================
+
+# ILUMINACIÓN NATURAL SUAVE 
 # Luz ambiente cálida como en la imagen de referencia
 rend.lights.append(AmbientLight(intensity=0.35))
 
@@ -122,10 +128,7 @@ rend.lights.append(PointLight(position=[0, 2, 8], intensity=0.6, color=[1.0, 0.9
 
 print(" Iluminación NATURAL configurada (6 luces) - Estilo arquitectónico minimalista")
 
-# ===============================================
-# ESCENA INSPIRADA EN IMAGEN DE REFERENCIA - ARQUITECTURA MINIMALISTA
-# ===============================================
-rend.objects = []
+
 
 # --- ARQUITECTURA BASE (inspirada en la referencia) ---
 rend.objects += [
@@ -161,11 +164,17 @@ rend.objects += [
 
     # Esfera pequeña dorada en primer plano — color sol / highlight (más pequeña)
     # Nudge: x +0.15, y +0.05, z +0.20
-    Sphere(position=[-0.45, -1.25, -1.8], radius=0.22, material=golden_sphere),
+    Sphere(position=[-0.25, -0.60, -1.50], radius=0.36, material=golden_sphere),
 
     # Opcional: elemento decorativo pequeño para equilibrio (tono mármol)
-    # Desplazado para evitar superposición con la esfera derecha (x+0.6, y-0.05, z+0.4)
-    Sphere(position=[2.2, 0.35, -1.6], radius=0.9, material=warm_marble),
+    # Moverlo hacia adelante para que sea visible en la composición
+    Sphere(position=[2.0, 0.35, -3.0], radius=0.9, material=warm_marble),
+
+    # Cylinders to simulate white curved wall behind the two large spheres
+    # Place them further back (higher negative Z) and aligned with each large sphere's X
+    # moved to corners so they don't occlude central figures
+    Cylinder(center=[-8.0, 0.0, -7.0], axis=[0,1,0], radius=2.8, height=8.0, material=warm_white),
+    Cylinder(center=[8.0, 0.0, -7.0], axis=[0,1,0], radius=2.8, height=8.0, material=warm_white),
 ]
 
 # --- ELEMENTOS ARQUITECTÓNICOS VERTICALES ---
@@ -192,7 +201,6 @@ rend.objects += [
     Cone(apex=[8, 2.5, -16], base_center=[8, -1, -16], radius=0.9, material=matte_beige),
 ]
 
-# --- ELEMENTOS DE DETALLE Y CONEXIÓN ---
 # Grupo 5: Discos como elementos de transición y marcos
 rend.objects += [
     # Discos como marcos conceptuales en paredes
@@ -212,7 +220,7 @@ rend.objects += [
 rend.camPos = np.array([0.4, 0.25, 2.6], dtype=float)  # Ajustada: ligeramente a la derecha y más cerca
 
 # Execute render
-print("🔄 Renderizando escena con ULTRA-SIMILITUD a referencia...")
+print("")
 import time
 start_time = time.time()
 
@@ -269,11 +277,9 @@ def _row_callback_live(j):
 # pick callback depending on whether live preview is active
 cb = _row_callback_live if (not NO_GUI and LIVE and root is not None) else _row_callback
 
-# If progressive mode requested and available, use pygame progressive renderer
 if PROGRESSIVE:
     try:
-        # compute scale: allow up to 8x when requested; default auto chooses
-        # a scale that yields a window width <= max_vis_width (if possible)
+        
         max_vis_width = 1200
         max_scale_allowed = 8
         if SCALE_ARG and SCALE_ARG >= 1:
@@ -307,43 +313,8 @@ if hasattr(rend, 'ssaa') and rend.ssaa > 1:
     print(f"🔍 Anti-aliasing: {rend.ssaa}x SSAA")
 
 # RESUMEN DE PUNTAJE PROYECTO FINAL - VERSIÓN REFERENCIA
-print("\n" + "="*60)
-print("🏆 RESUMEN DE PUNTAJE - PROYECTO FINAL RAY TRACER")
-print("🏛️ VERSIÓN: INSPIRADA EN IMAGEN DE REFERENCIA")
-print("="*60)
 
-total_score = 0
 
-print("\n📊 DESGLOSE DE PUNTOS:")
-
-# Complejidad de escena (30 puntos)
-scene_score = 30
-total_score += scene_score
-print(f"✅ Complejidad de escena: {scene_score}/30 pts")
-print(f"   • {len(rend.objects)} objetos totales (>10 requeridos)")
-print(f"   • Arquitectura minimalista inspirada en referencia")
-
-# Materiales diversos (20 puntos)
-materials_score = 20
-total_score += materials_score
-print(f"✅ Materiales diversos: {materials_score}/20 pts")
-print(f"   • 4+ tipos: OPAQUE, REFLECTIVE, TRANSPARENT")
-print(f"   • Paleta de referencia: beige, dorado, translúcido, bronce")
-
-# Environment Map (5 puntos)
-env_score = 5
-total_score += env_score
-print(f"✅ Environment Map: {env_score}/5 pts")
-print(f"   • map.jpg cargado con rotación 45° (visible por transparencias)")
-
-# Figuras nuevas (20 puntos máximo, 5 pts c/u)
-figures_score = 20
-total_score += figures_score
-print(f"✅ Figuras geométricas nuevas: {figures_score}/20 pts")
-print(f"   • Torus: 5/5 pts (formas curvas arquitectónicas)")
-print(f"   • Cone: 5/5 pts (elementos direccionales)")
-print(f"   • Ellipsoid: 5/5 pts (columnas orgánicas)")
-print(f"   • Sphere: 5/5 pts (esferas translúcidas principales)")
 
 
 

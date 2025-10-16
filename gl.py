@@ -1,8 +1,14 @@
 import numpy as np
 from PIL import Image
 import math
+import os
+import contextlib
+import sys
 try:
-    import pygame
+    # pygame prints introductory lines to stdout/stderr; suppress them during import
+    with open(os.devnull, 'w') as devnull:
+        with contextlib.redirect_stdout(devnull), contextlib.redirect_stderr(devnull):
+            import pygame
     _HAS_PYGAME = True
 except Exception:
     _HAS_PYGAME = False
@@ -171,12 +177,15 @@ class Renderer:
             if max_overall > 0 and max_overall < 48:
                 # scale up so the max becomes near 230 (leave some headroom)
                 scale = min(230.0 / max_overall, 255.0)
-                print(f"[saveBMP] autoscaling framebuffer by {scale:.2f} (max before {max_overall})")
+                if not getattr(self, 'quiet', False):
+                    print(f"[saveBMP] autoscaling framebuffer by {scale:.2f} (max before {max_overall})")
                 fb = np.clip((fb.astype(np.float32) * scale), 0, 255).astype(np.uint8)
             else:
-                print(f"[saveBMP] no autoscale needed (max per channel {tuple(maxvals)})")
+                if not getattr(self, 'quiet', False):
+                    print(f"[saveBMP] no autoscale needed (max per channel {tuple(maxvals)})")
         else:
-            print("[saveBMP] autoscale disabled via RAY_NO_AUTOSCALE=1")
+            if not getattr(self, 'quiet', False):
+                print("[saveBMP] autoscale disabled via RAY_NO_AUTOSCALE=1")
         row_stride = w * 3
         row_padded = (row_stride + 3) & ~3
         padding = row_padded - row_stride
@@ -254,6 +263,36 @@ class Renderer:
             if window_size is not None and window_size != (W, H):
                 surf = pygame.transform.smoothscale(surf, window_size)
             screen.blit(surf, (0, 0))
+
+            # Print coarse progress to console so users running without --quiet
+            # still see render progress (prints will be suppressed if stdout is
+            # redirected or if builtins.print was overridden by quiet mode).
+            try:
+                progress_step = max(1, H // 40)
+                if (y % progress_step) == 0:
+                    pct = int((y + 1) * 100 / H)
+                    if not getattr(self, 'quiet', False):
+                        print(f"Progress: {pct}% (row {y+1}/{H})")
+            except Exception:
+                # never let progress printing break the render
+                pass
+
+            # draw percentage overlay (if fonts available)
+            try:
+                if not pygame.font.get_init():
+                    pygame.font.init()
+                font = pygame.font.SysFont('Arial', max(12, window_size[1] // 24))
+                pct = int((y+1) * 100 / H)
+                txt = font.render(f"{pct}%", True, (255,255,255))
+                # draw subtle background for legibility
+                rect = txt.get_rect(topleft=(8,8))
+                bg = pygame.Surface((rect.width+6, rect.height+4), pygame.SRCALPHA)
+                bg.fill((0,0,0,120))
+                screen.blit(bg, (6,6))
+                screen.blit(txt, (9,8))
+            except Exception:
+                # if fonts fail, silently continue
+                pass
             pygame.display.flip()
 
         return (np.clip(img, 0, 1) * 255).astype(np.uint8)
